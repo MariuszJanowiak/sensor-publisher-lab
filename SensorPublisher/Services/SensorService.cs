@@ -36,6 +36,10 @@ namespace SensorPublisher.Services
 
             var options = builder.Build();
 
+            #endregion
+
+            #region Reconnecting
+
             _client.DisconnectedAsync += async e => 
             {
                 log.LogWarning(e.Exception + "MQTT disconnected. Reconnecting");
@@ -100,18 +104,18 @@ namespace SensorPublisher.Services
             #endregion
         }
 
-        public override async Task StopAsync(CancellationToken ct)
+        public override async Task StopAsync(CancellationToken cancellationTokent)
         {
             if (_client?.IsConnected == true)
             {
-                var disc = new MqttClientDisconnectOptions
+                var disconnectOptions = new MqttClientDisconnectOptions
                 {
                     Reason = MqttClientDisconnectOptionsReason.NormalDisconnection
                 };
-                await _client.DisconnectAsync(disc, ct);
+                await _client.DisconnectAsync(disconnectOptions, cancellationTokent);
             }
 
-            await base.StopAsync(ct);
+            await base.StopAsync(cancellationTokent);
         }
     }
 }
