@@ -1,0 +1,39 @@
+﻿<Project Sdk="Microsoft.NET.Sdk.Worker">
+
+	<PropertyGroup>
+		<TargetFramework>net8.0</TargetFramework>
+		<Nullable>enable</Nullable>
+		<ImplicitUsings>enable</ImplicitUsings>
+		<UserSecretsId>dotnet-SensorPublisher-a99df11b-0330-4cee-b41b-5459693906c0</UserSecretsId>
+		<DockerDefaultTargetOS>Linux</DockerDefaultTargetOS>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="$(Configuration) == Dev">
+		<PublishAot>false</PublishAot>
+		<InvariantGlobalization>false</InvariantGlobalization>
+		<StripSymbols>false</StripSymbols>
+		<TieredCompilation>true</TieredCompilation>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="$(Configuration) == Staged">
+		<PublishAot>false</PublishAot>
+		<InvariantGlobalization>false</InvariantGlobalization>
+		<StripSymbols>true</StripSymbols>
+		<TieredCompilation>true</TieredCompilation>
+	</PropertyGroup>
+
+	<PropertyGroup Condition="$(Configuration) == Prod">
+		<PublishAot>true</PublishAot>
+		<InvariantGlobalization>true</InvariantGlobalization>
+		<StripSymbols>true</StripSymbols>
+		<TieredCompilation>false</TieredCompilation>
+	</PropertyGroup>
+
+	<ItemGroup>
+		<PackageReference Include="DotNetty.Codecs.Mqtt" Version="0.7.6" />
+		<PackageReference Include="Meadow.MQTT" Version="2.4.0" />
+		<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
+		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
+		<PackageReference Include="MQTTnet" Version="4.3.7.1207" />
+	</ItemGroup>
+</Project>
