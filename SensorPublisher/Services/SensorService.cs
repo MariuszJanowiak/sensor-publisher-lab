@@ -19,9 +19,9 @@ namespace SensorPublisher.Services
         private IMqttClient? _client;
         private readonly Random _random = new();
 
-        protected override async Task ExecuteAsync(CancellationToken ct)
+        protected override async Task ExecuteAsync(CancellationToken cancellationToken)
         {
-            #region Builder
+            #region Client Builder
 
             var factory = new MqttFactory();
             _client = factory.CreateMqttClient();
@@ -29,49 +29,69 @@ namespace SensorPublisher.Services
             var builder = new MqttClientOptionsBuilder()
                 .WithTcpServer(_mqtt.Host, _mqtt.Port)
                 .WithClientId($"sensor-{Guid.NewGuid():N}")
-                .WithTlsOptions(o =>
+                .WithTlsOptions(option =>
                 {
-                     o.UseTls(_mqtt.UseTls);
+                     option.UseTls(_mqtt.UseTls);
                 });
 
             var options = builder.Build();
 
             #endregion
 
-            #region Reconnecting
+            #region Events
+
+            #region Disconnected
 
             _client.DisconnectedAsync += async e => 
             {
                 log.LogWarning(e.Exception + "MQTT disconnected. Reconnecting");
-                var delay = TimeSpan.FromSeconds(3);
+                int delaySeconds = 3;
 
-                //TODO:: Reconnecting part
+                while (!_client!.IsConnected && !cancellationToken.IsCancellationRequested)
+                {
+                    try
+                    {
+                        await Task.Delay(TimeSpan.FromSeconds(delaySeconds), cancellationToken);
+                        await _client.ConnectAsync(options, cancellationToken);
+                        log.LogInformation("MQTT reconnected");
+                        break;
+                    }
+                    catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+                    {
+                        return;
+                    }
+                    catch (Exception ex)
+                    {
+                        log.LogWarning(ex + "Reconnection failed");
+                        if (delaySeconds < 30) delaySeconds *= 2;
+                    }
+                }
             };
 
             #endregion
 
-            #region CancellationToken Loops
+            #region Connected
 
-            while (!ct.IsCancellationRequested)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 try
                 {
-                    await _client.ConnectAsync(options, ct);
+                    await _client.ConnectAsync(options, cancellationToken);
                     log.LogInformation("MQTT connected: {Host}:{Port} TLS={Tls}", _mqtt.Host, _mqtt.Port, _mqtt.UseTls);
                     break;
                 }
                 catch (Exception ex)
                 {
                     log.LogWarning(ex, "MQTT not ready, retry in 3s…");
-                    await Task.Delay(3000, ct);
+                    await Task.Delay(3000, cancellationToken);
                 }
             }
 
-            while (!ct.IsCancellationRequested)
+            while (!cancellationToken.IsCancellationRequested)
             {
                 var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                var t = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                var value = 22.0 + 3.0 * Math.Sin(t / 30.0) + _random.NextDouble();
+                var timeS = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                var value = 22.0 + 3.0 * Math.Sin(timeS / 30.0) + _random.NextDouble();
 
                 var payload = System.Text.Json.JsonSerializer.Serialize(new
                 {
@@ -90,7 +110,7 @@ namespace SensorPublisher.Services
 
                 try
                 {
-                    await _client!.PublishAsync(msg, ct);
+                    await _client!.PublishAsync(msg, cancellationToken);
                     log.LogInformation("→ {Topic} {Val:F2}°C", _mqtt.Topic, value);
                 }
                 catch (Exception ex)
@@ -98,10 +118,13 @@ namespace SensorPublisher.Services
                     log.LogError(ex, "Publish failed");
                 }
 
-                await Task.Delay(TimeSpan.FromSeconds(_pub.PeriodSeconds), ct);
+                await Task.Delay(TimeSpan.FromSeconds(_pub.PeriodSeconds), cancellationToken);
             }
 
             #endregion
+
+            #endregion
+
         }
 
         public override async Task StopAsync(CancellationToken cancellationTokent)
