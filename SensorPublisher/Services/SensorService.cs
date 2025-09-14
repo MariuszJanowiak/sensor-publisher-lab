@@ -1,5 +1,4 @@
 ﻿using MQTTnet;
-using MQTTnet.Client;
 using System.Text.Json;
 using Microsoft.Extensions.Options;
 using SensorPublisher.Options;
@@ -22,18 +21,13 @@ namespace SensorPublisher.Services
 
         protected override async Task ExecuteAsync(CancellationToken cancellationToken)
         {
-            var factory = new MqttFactory();
-            _client = factory.CreateMqttClient();
+            _client = new MqttClientFactory().CreateMqttClient();
 
-            var builder = new MqttClientOptionsBuilder()
+            var options = new MqttClientOptionsBuilder()
                 .WithTcpServer(_mqtt.Host, _mqtt.Port)
                 .WithClientId($"sensor-{Guid.NewGuid():N}")
-                .WithTlsOptions(option =>
-                {
-                    option.UseTls(_mqtt.UseTls);
-                });
-
-            var options = builder.Build();
+                .WithTlsOptions(option => {option.UseTls(_mqtt.UseTls);})
+                .Build();
 
             _client.ConnectedAsync += e =>
             {

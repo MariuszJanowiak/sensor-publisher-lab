@@ -34,6 +34,6 @@
 		<PackageReference Include="Meadow.MQTT" Version="2.4.0" />
 		<PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.1" />
 		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
-		<PackageReference Include="MQTTnet" Version="4.3.7.1207" />
+		<PackageReference Include="MQTTnet" Version="5.0.1.1416" />
 	</ItemGroup>
 </Project>
