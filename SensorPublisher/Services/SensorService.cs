@@ -1,5 +1,6 @@
 ﻿using MQTTnet;
 using MQTTnet.Client;
+using System.Text.Json;
 using Microsoft.Extensions.Options;
 using SensorPublisher.Options;
 
@@ -21,8 +22,6 @@ namespace SensorPublisher.Services
 
         protected override async Task ExecuteAsync(CancellationToken cancellationToken)
         {
-            #region Client Builder
-
             var factory = new MqttFactory();
             _client = factory.CreateMqttClient();
 
@@ -31,29 +30,32 @@ namespace SensorPublisher.Services
                 .WithClientId($"sensor-{Guid.NewGuid():N}")
                 .WithTlsOptions(option =>
                 {
-                     option.UseTls(_mqtt.UseTls);
+                    option.UseTls(_mqtt.UseTls);
                 });
 
             var options = builder.Build();
 
-            #endregion
-
-            #region Events
-
-            #region Disconnected
-
-            _client.DisconnectedAsync += async e => 
+            _client.ConnectedAsync += e =>
             {
-                log.LogWarning(e.Exception + "MQTT disconnected. Reconnecting");
-                int delaySeconds = 3;
+                log.LogInformation("MQTT connected. SessionPresent={Session}",
+                    e.ConnectResult?.IsSessionPresent);
+                return Task.CompletedTask;
+            };
+
+            _client.DisconnectedAsync += async e =>
+            {
+                log.LogWarning(e.Exception, "MQTT disconnected. Reconnecting…");
+
+                int delaySec = 3;
+                const int maxSec = 30;
 
                 while (!_client!.IsConnected && !cancellationToken.IsCancellationRequested)
                 {
                     try
                     {
-                        await Task.Delay(TimeSpan.FromSeconds(delaySeconds), cancellationToken);
+                        await Task.Delay(TimeSpan.FromSeconds(delaySec), cancellationToken);
                         await _client.ConnectAsync(options, cancellationToken);
-                        log.LogInformation("MQTT reconnected");
+                        log.LogInformation("MQTT reconnected.");
                         break;
                     }
                     catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
@@ -62,17 +64,13 @@ namespace SensorPublisher.Services
                     }
                     catch (Exception ex)
                     {
-                        log.LogWarning(ex + "Reconnection failed");
-                        if (delaySeconds < 30) delaySeconds *= 2;
+                        log.LogWarning(ex, "Reconnection failed; retry in {Delay}s", delaySec);
+                        delaySec = Math.Min(delaySec * 2, maxSec); // 3→6→12→24→30
                     }
                 }
             };
 
-            #endregion
-
-            #region Connected
-
-            while (!cancellationToken.IsCancellationRequested)
+            while (!cancellationToken.IsCancellationRequested) // Connect loop
             {
                 try
                 {
@@ -87,29 +85,35 @@ namespace SensorPublisher.Services
                 }
             }
 
-            while (!cancellationToken.IsCancellationRequested)
+            while (!cancellationToken.IsCancellationRequested) // Publish loop
             {
-                var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-                var timeS = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                var value = 22.0 + 3.0 * Math.Sin(timeS / 30.0) + _random.NextDouble();
-
-                var payload = System.Text.Json.JsonSerializer.Serialize(new
-                {
-                    measurement = "temperature",
-                    value,
-                    sensor = _sensor.Name,
-                    unit = "C",
-                    site = _sensor.Site,
-                    ts = nowMs
-                });
-
-                var msg = new MqttApplicationMessageBuilder()
-                    .WithTopic(_mqtt.Topic)
-                    .WithPayload(System.Text.Encoding.UTF8.GetBytes(payload))
-                    .Build();
-
                 try
                 {
+                    if (!_client!.IsConnected) // Check connection
+                    {
+                        await Task.Delay(200, cancellationToken);
+                        continue;
+                    }
+
+                    var nowMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
+                    var timeS = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    var value = 22.0 + 3.0 * Math.Sin(timeS / 30.0) + _random.NextDouble();
+
+                    var payload = JsonSerializer.Serialize(new
+                    {
+                        measurement = "temperature",
+                        value,
+                        sensor = _sensor.Name,
+                        unit = "C",
+                        site = _sensor.Site,
+                        ts = nowMs
+                    });
+
+                    var msg = new MqttApplicationMessageBuilder()
+                        .WithTopic(_mqtt.Topic)
+                        .WithPayload(System.Text.Encoding.UTF8.GetBytes(payload))
+                        .Build();
+
                     await _client!.PublishAsync(msg, cancellationToken);
                     log.LogInformation("→ {Topic} {Val:F2}°C", _mqtt.Topic, value);
                 }
@@ -120,11 +124,6 @@ namespace SensorPublisher.Services
 
                 await Task.Delay(TimeSpan.FromSeconds(_pub.PeriodSeconds), cancellationToken);
             }
-
-            #endregion
-
-            #endregion
-
         }
 
         public override async Task StopAsync(CancellationToken cancellationTokent)

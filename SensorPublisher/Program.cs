@@ -1,7 +1,7 @@
 using SensorPublisher.Options;
 using SensorPublisher.Services;
 
-var builder = Host.CreateApplicationBuilder(args);
+HostApplicationBuilder builder = Host.CreateApplicationBuilder(args);
 
 builder.Configuration.AddEnvironmentVariables();
 builder.Services.Configure<MqttOptions>(builder.Configuration.GetSection("Mqtt"));
