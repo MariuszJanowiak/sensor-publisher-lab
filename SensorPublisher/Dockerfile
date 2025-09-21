@@ -1,11 +1,15 @@
+# SensorPublisher/Dockerfile
 FROM mcr.microsoft.com/dotnet/sdk:8.0 AS build
-WORKDIR /src
-COPY . .
-RUN dotnet publish -c Release -r linux-x64 -p:PublishAot=true --self-contained true -o /out
+WORKDIR /work
+COPY ./SensorPublisher/*.csproj ./SensorPublisher/
+RUN dotnet restore ./SensorPublisher/SensorPublisher.csproj
 
-FROM debian:bookworm-slim
-RUN useradd -m app && apt-get update && apt-get install -y ca-certificates && rm -rf /var/lib/apt/lists/*
-USER app
+# Copy everything else and build
+COPY . .
+RUN dotnet publish ./SensorPublisher/SensorPublisher.csproj -c Release -o /out
+
+# Build runtime image
+FROM mcr.microsoft.com/dotnet/runtime:8.0
 WORKDIR /app
 COPY --from=build /out .
-ENTRYPOINT ["./SensorPublisher"]
+ENTRYPOINT ["dotnet","SensorPublisher.dll"]
